@@ -33,6 +33,7 @@ Rev1: Simple - pull out the SD card support and port to work on RFDuino - DONE
 Rev2: Simple - but now with home-brew tap detection, toggling and multi-hit detection wiht timouts and debounce 
 Jan 17 2017 - this is what's getting loaded onto the RFDUIno that's acting as a guesture based foot switch prototype
               Added LED to pin3 "DataOut" that blinks on each "hitme" event...nice fast signal MELIKESIT
+Feb 10      - Uploaded to Github              
   
 ******************************************************************************/
 // MPU-9250 Digital Motion Processing (DMP) Library

@@ -17,6 +17,8 @@ Use this program to relay a blip everytime something comes from the "foot switch
 
 Ideally there should be some sort of serial communication goodness between these two (Teensy to RFDuino)...
 but for now it's just a bit flip off-->on-->off and wait to repeat
+Feb 10 - Uploaded to Github
+
 */
 
 #include <RFduinoGZLL.h>

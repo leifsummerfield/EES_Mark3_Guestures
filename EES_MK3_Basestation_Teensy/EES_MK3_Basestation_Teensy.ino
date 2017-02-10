@@ -27,6 +27,7 @@ Working as of Jan 15, 2017
 Jan 15+   --> Add check that RFDuino footswitch is sending bits before entering main loop
 Jan 17        INvert touched logic (actual handset is actively inverted from what's coded by the prototype handpiece")
                Aaaand add some sound back into the loop taking advantage of the hardware on-hand
+Feb 10    Uploaded to Github and built repository 
                
  */
 
@@ -69,7 +70,7 @@ wavTrigger wTrig;             // Our WAV Trigger object
 CapacitiveSensor   C1 = CapacitiveSensor(20,16);        // 10M resistor between pins 21 & 22, pin 22 is sensor pin, add a wire and or foil if desired
 CapacitiveSensor   C2 = CapacitiveSensor(20,17);        // 10M resistor between pins 21 & 23, pin 23 is sensor pin, add a wire and or foil
 volatile long total2, total1; 
-int QTin = 17; 
+int QTin = 16; 
 
 boolean bTouched = false; 
 
@@ -160,6 +161,7 @@ bool calibrated_Smpl[ NUM_MOTORS ] = { false, false, false, false };
 //     SETUP SECTION  ---------------------------------------------------------------SETUP SECTION ------------------------------------
 void setup() {
     // initialize the pushbutton pin as an input:
+  pinMode(QTin, INPUT); 
   pinMode(encoderButton, INPUT);     
   pinMode(PWM_OUT, OUTPUT);
  // pinMode(Shaft_RED, OUTPUT);
@@ -191,7 +193,9 @@ void setup() {
   //  was already playing tracks. If we are powering the WAV Trigger, it doesn't
   //  hurt to do this.
   wTrig.stopAllTracks();
-  wTrig.trackPlayPoly(98);               // Play first note
+ 
+ //Easter Egg for Bill...track 98 is the Millenium Falcon taking off
+ //wTrig.trackPlayPoly(98);               // Play first note
 
    Serial.begin(9600);
  
@@ -546,13 +550,13 @@ void readTouch_QT110(void)
   if (QT_in ==1)
   {
     bTouched = true; 
-    Serial.println("Touched = True"); 
+  //  Serial.println("Touched = True"); 
     
   }
   else bTouched = false; 
 
 
- // Serial.print(bTouched);  Serial.print(" -->"); Serial.println(QT_in);
+  Serial.print(bTouched);  Serial.print(" -->"); Serial.println(QT_in);
 
   
   }
