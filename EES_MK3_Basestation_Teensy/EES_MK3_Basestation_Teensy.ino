@@ -1,4 +1,7 @@
 //#include <EES_Click_Lib.h>
+//Build Notes: 
+//Arduino 1.6.13
+//For Teensy 3.2 with Teensiduino Drivers 1.34
 
 /*
 Haptics tool base 
@@ -28,6 +31,11 @@ Jan 15+   --> Add check that RFDuino footswitch is sending bits before entering 
 Jan 17        INvert touched logic (actual handset is actively inverted from what's coded by the prototype handpiece")
                Aaaand add some sound back into the loop taking advantage of the hardware on-hand
 Feb 10    Uploaded to Github and built repository 
+Feb 13 - Add 9DOF sensor support 
+            and Cheryl Anne Mooney, Rest In Peace our Fairy God Mother
+Feb 17      Build Notes Added above
+            Add tilt sensor calibration step to init zone: collect a  zero angle offset
+            
                
  */
 
@@ -158,6 +166,26 @@ typedef struct {
 uint8_t calibrations_Smpl[ NUM_MOTORS ][ 3 ];
 bool calibrated_Smpl[ NUM_MOTORS ] = { false, false, false, false };
 
+//Ohh and one more thing...9DOF sensor support
+//NEW for this version is the 9DOF sensor...map it to the screen
+// MPU-9250 Digital Motion Processing (DMP) Library
+#include <SparkFunMPU9250-DMP.h>
+
+// config.h manages default logging parameters and can be used
+#include "config_DOF.h"
+
+MPU9250_DMP imu; // Create an instance of the MPU9250_DMP class
+
+unsigned short accelFSR = IMU_ACCEL_FSR;
+unsigned short gyroFSR = IMU_GYRO_FSR;
+unsigned short fifoRate = DMP_SAMPLE_RATE;
+#define AHRS false         // Set to false for basic data read
+uint8_t tiltOffset;       // Zero angle offset collected during init process
+int mag_x;                // main variable for tiltangle
+int tiltThreshold;        // where we trip the function change
+int  Tilt;                // used for reading in the loop and compareing to tiltThreshold
+int TiltedMode = 1;       // Tilt activated variable indexd on each tilt up
+
 //     SETUP SECTION  ---------------------------------------------------------------SETUP SECTION ------------------------------------
 void setup() {
     // initialize the pushbutton pin as an input:
@@ -174,6 +202,17 @@ void setup() {
   
   attachInterrupt(encoderButton, isrService, RISING); // interrrupt 1 is data ready
   attachInterrupt(10, isrService2, RISING);      //Test of 2nd ISR
+
+  // Initialize the MPU-9250. Should return true on success:
+  if ( !initIMU() ) 
+  {
+    Serial.println("Error connecting to MPU-9250");
+    while (1) ; // Loop forever if we fail to connect
+  }
+
+  imu.setAccelFSR(2); // Set accel to +/-2g
+
+
   
   // set up the LCD's number of columns and rows: 
   lcd.begin(16, 2);
@@ -271,7 +310,57 @@ void setup() {
        lcd.setCursor(14,1);
        lcd.print(tapFootCounter);     
     }
-        
+
+
+
+// THIRD SETUP CHECK --> Set the tilt sensor to 'zero' angle and collect offset
+//Let's set the GUI and read N taps before continuing
+  //wipe the neopixels clean
+  strip.show(); // Initialize all pixels to 'off'
+  colorWipe(strip.Color(50, 50, 50), 20); // White
+ 
+    // set up the LCD's number of columns and rows: 
+  lcd.setCursor(0, 0);
+  // Print a message to the LCD.
+  lcd.print("State #1: Test");
+  lcd.setCursor(0,1);
+  lcd.print("Hold tool level"); 
+  toggleBit = 0;
+  
+  while (toggleBit != 1)
+    {
+    imu.update(); 
+    tiltOffset=imu.calcMag(imu.mx);
+    Serial.println(mag_x);
+    }
+  //When we while out of this loop...then mag_x is our offset value to always subtract...save it to       
+
+
+// FOURTH SETUP CHECK --> Set the tilt sensor to 'zero' angle and collect offset
+//Let's set the GUI and read N taps before continuing
+  //wipe the neopixels clean
+  strip.show(); // Initialize all pixels to 'off'
+  colorWipe(strip.Color(50, 50, 50), 150); // White
+ 
+    // set up the LCD's number of columns and rows: 
+  lcd.setCursor(0, 0);
+  // Print a message to the LCD.
+  lcd.print("State #1: Test");
+  lcd.setCursor(0,1);
+  lcd.print("Tilt to Threshld"); 
+  toggleBit = 0;
+  
+  while (toggleBit != 1)
+    {
+      imu.update(); 
+      mag_x=imu.calcMag(imu.mx);
+      mag_x = mag_x - tiltOffset; 
+      mag_x = map(mag_x,450,540,0,180);
+      Serial.println(mag_x);
+    }     //When we while out of this loop...then we have the angle we want to trip at
+    tiltThreshold = mag_x; 
+
+    
    toggleBit = 1; //undo toggle after testing so we don't jump right into the armed stated in the loop
 
   lcd.clear();
@@ -326,6 +415,9 @@ if(toggleBit == 0)
   {
     Serial.println("entering toggle = 0 ARMED mode");
     lcd.clear();
+    lcd.setCursor(0,1);
+    lcd.print("ARMED    Mode(1)"); 
+
     
   while(toggleBit == 0)
     {
@@ -341,6 +433,8 @@ if(toggleBit == 0)
     strip.show();
     
     readTouch_QT110();
+    Tilt = get_TiltOmeter();     //Do tilt sensing switch
+    
     delay(10);        
       if (bTouched == true)
         { 
@@ -353,7 +447,7 @@ if(toggleBit == 0)
         strip.show();
         //play some sound the first time through
         wTrig.stopAllTracks();
-        wTrig.trackPlayPoly(2); 
+        wTrig.trackPlayPoly(TiltedMode); 
         
         while(bTouched ==true)
            {
@@ -361,6 +455,38 @@ if(toggleBit == 0)
            Serial.println("TOUCHED IN LOOP");
            }
          }
+
+
+      if (Tilt > tiltThreshold)
+      {
+        TiltedMode = TiltedMode + 1; 
+        if(TiltedMode > 5)
+          TiltedMode = 1; 
+        
+        lcd.setCursor(0,0);
+        lcd.print("State #3");
+        lcd.setCursor(9,1);
+        lcd.print("Mode(");
+        lcd.setCursor(14,1);
+        lcd.print(TiltedMode);
+        lcd.setCursor(15,1);
+        lcd.print(")"); 
+            
+        strip.setPixelColor(3, strip.Color(30, 0, 50));
+        strip.show();
+        //play some sound the first time through
+        wTrig.stopAllTracks();
+        wTrig.trackPlayPoly(TiltedMode); 
+        delay(500); 
+        while(Tilt > tiltThreshold)
+           {
+           Tilt = get_TiltOmeter();
+           Serial.println("Tilted");
+           delay(250); 
+           }
+        
+      }
+         
     }
   }
   
@@ -749,5 +875,66 @@ void goOFF(void)
 
 }
 
+
+bool initIMU(void)
+{
+  // imu.begin() should return 0 on success. Will initialize
+  // I2C bus, and reset MPU-9250 to defaults.
+  if (imu.begin() != INV_SUCCESS)
+    return false;
+
+  // Set up MPU-9250 interrupt:
+  imu.enableInterrupt(); // Enable interrupt output
+  imu.setIntLevel(1);    // Set interrupt to active-low
+  imu.setIntLatched(1);  // Latch interrupt output
+
+  // Configure sensors:
+  // Set gyro full-scale range: options are 250, 500, 1000, or 2000:
+  imu.setGyroFSR(gyroFSR);
+  // Set accel full-scale range: options are 2, 4, 8, or 16 g 
+  imu.setAccelFSR(accelFSR);
+  // Set gyro/accel LPF: options are5, 10, 20, 42, 98, 188 Hz
+  imu.setLPF(IMU_AG_LPF); 
+  // Set gyro/accel sample rate: must be between 4-1000Hz
+  // (note: this value will be overridden by the DMP sample rate)
+  imu.setSampleRate(IMU_AG_SAMPLE_RATE); 
+  // Set compass sample rate: between 4-100Hz
+  imu.setCompassSampleRate(IMU_COMPASS_SAMPLE_RATE); 
+
+  // Configure digital motion processor. Use the FIFO to get
+  // data from the DMP.
+  unsigned short dmpFeatureMask = 0;
+  if (ENABLE_GYRO_CALIBRATION)
+  {
+    // Gyro calibration re-calibrates the gyro after a set amount
+    // of no motion detected
+    dmpFeatureMask |= DMP_FEATURE_SEND_CAL_GYRO;
+  }
+  else
+  {
+    // Otherwise add raw gyro readings to the DMP
+    dmpFeatureMask |= DMP_FEATURE_SEND_RAW_GYRO;
+  }
+  // Add accel and quaternion's to the DMP
+  dmpFeatureMask |= DMP_FEATURE_SEND_RAW_ACCEL;
+  dmpFeatureMask |= DMP_FEATURE_6X_LP_QUAT;
+
+  // Initialize the DMP, and set the FIFO's update rate:
+  imu.dmpBegin(dmpFeatureMask, fifoRate);
+
+  return true; // Return success
+}
+
+
+
+int get_TiltOmeter(void)
+{
+  imu.update(); 
+  mag_x=imu.calcMag(imu.mx);
+  mag_x = mag_x - tiltOffset; 
+  mag_x = map(mag_x,450,540,0,180);
+  Serial.println(mag_x);
+  return mag_x; 
+}
 
 
