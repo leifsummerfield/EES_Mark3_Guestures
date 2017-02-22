@@ -1,0 +1,85 @@
+Telemetry Viewer File Format v0.1
+
+Grid Settings:
+
+	column count = 2
+	row count = 2
+
+Serial Port Settings:
+
+	port = cu.usbmodem230461
+	baud = 115200
+	packet type = ASCII CSVs
+	sample rate = 10
+
+4 Data Structure Locations:
+
+	location = 0
+	processor index = 0
+	name = Toggle
+	color = 0xFF0000
+	unit = bit
+	conversion factor a = 1.0
+	conversion factor b = 1.0
+
+	location = 1
+	processor index = 0
+	name = Touch
+	color = 0xFF0000
+	unit = bit
+	conversion factor a = 1.0
+	conversion factor b = 1.0
+
+	location = 2
+	processor index = 0
+	name = Tilt
+	color = 0xFF0000
+	unit = angle
+	conversion factor a = 1.0
+	conversion factor b = 1.0
+
+	location = 3
+	processor index = 0
+	name = Mode
+	color = 0xFF0000
+	unit = Units
+	conversion factor a = 1.0
+	conversion factor b = 1.0
+
+4 Charts:
+
+	chart type = Time Domain Chart
+	duration = 1000
+	top left x = 0
+	top left y = 0
+	bottom right x = 0
+	bottom right y = 0
+	datasets count = 1
+		dataset location = 0
+
+	chart type = Time Domain Chart
+	duration = 1000
+	top left x = 0
+	top left y = 1
+	bottom right x = 0
+	bottom right y = 1
+	datasets count = 1
+		dataset location = 3
+
+	chart type = Dial Chart
+	duration = 1000
+	top left x = 1
+	top left y = 0
+	bottom right x = 1
+	bottom right y = 0
+	datasets count = 1
+		dataset location = 2
+
+	chart type = Time Domain Chart
+	duration = 1000
+	top left x = 1
+	top left y = 1
+	bottom right x = 1
+	bottom right y = 1
+	datasets count = 1
+		dataset location = 1

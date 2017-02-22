@@ -35,7 +35,10 @@ Feb 13 - Add 9DOF sensor support
             and Cheryl Anne Mooney, Rest In Peace our Fairy God Mother
 Feb 17      Build Notes Added above
             Add tilt sensor calibration step to init zone: collect a  zero angle offset
-Feb 19    Token            
+Feb 19    Token
+
+Feb 21  -  Config serial outputting into telemetry formatting 
+        -  Add running average filter to magnetometer to remove blips...
                
  */
 
@@ -184,7 +187,14 @@ uint8_t tiltOffset;       // Zero angle offset collected during init process
 int mag_x;                // main variable for tiltangle
 int tiltThreshold;        // where we trip the function change
 int  Tilt;                // used for reading in the loop and compareing to tiltThreshold
-int TiltedMode = 1;       // Tilt activated variable indexd on each tilt up
+int TiltedMode = 1;       // Tilt activated variable indexed on each tilt up
+
+// And add a running average filter for the magnetometer
+#include "RunningAverage.h"
+
+RunningAverage myRunAvg(5);
+int samples = 0;
+
 
 //     SETUP SECTION  ---------------------------------------------------------------SETUP SECTION ------------------------------------
 void setup() {
@@ -211,6 +221,9 @@ void setup() {
   }
 
   imu.setAccelFSR(2); // Set accel to +/-2g
+
+  // Init the running average filter with some initial values
+    myRunAvg.fillValue(100,5);
 
 
   
@@ -247,10 +260,13 @@ void setup() {
      Serial.println("Here after haptics fired UP");
       lcd.clear();
 
-      myEnc.write(1); // get the encoder value set to a known value befor checking it in loop
-
-   
+      myEnc.write(1); // get the encoder value set to a known value befor checking it in loop   
       toggleBit = 1;      //launch into the main loop by selecting first 
+
+
+  printTelemetry("Hello World"); 
+
+      
 
 // FIRST SETUP CHECK --> Is the touchsensor active on the tool head?
 //Let's set the GUI and read N touches before continuing
@@ -265,7 +281,7 @@ void setup() {
   while (touchCounter < 3)
     {
     readTouch_QT110(); 
-
+    printTelemetry("Setup#1: Touch test"); 
         if(bTouched == 1)
         {
         touchCounter =touchCounter +1;
@@ -274,11 +290,12 @@ void setup() {
       strip.show();
         while(bTouched ==1)
         readTouch_QT110(); 
-      
+        printTelemetry("Setup#1: TOUCHED"); 
         }
     lcd.setCursor(14,1);
     lcd.print(touchCounter); 
     }
+    
 // SECOND SETUP CHECK --> Is the footswtich active sending data over RFDUINO connection
 //Let's set the GUI and read N taps before continuing
   //wipe the neopixels clean
@@ -297,6 +314,7 @@ void setup() {
   
   while (tapFootCounter < 3)
     {
+     printTelemetry("Setup#2: Tap Test"); 
         if(toggleBit == 1)
         {
         tapFootCounter =tapFootCounter +1;
@@ -331,7 +349,8 @@ void setup() {
     {
     imu.update(); 
     tiltOffset=imu.calcMag(imu.mx);
-    Serial.println(mag_x);
+    Tilt = tiltOffset; 
+    printTelemetry("Setup#3: Zero the tilt-o-meter"); 
     }
   //When we while out of this loop...then mag_x is our offset value to always subtract...save it to       
 
@@ -356,7 +375,8 @@ void setup() {
       mag_x=imu.calcMag(imu.mx);
       mag_x = mag_x - tiltOffset; 
       mag_x = map(mag_x,450,540,0,180);
-      Serial.println(mag_x);
+      Tilt = mag_x;   //For telemetry outputing
+      printTelemetry("Setup#4: Find Tilt Threshold"); 
     }     //When we while out of this loop...then we have the angle we want to trip at
     tiltThreshold = mag_x; 
 
@@ -375,6 +395,7 @@ void setup() {
     strip.setPixelColor(2, strip.Color(0, 0, 0));
     strip.setPixelColor(3, strip.Color(0, 0, 0)); 
     strip.show();
+    printTelemetry("Setup Done!"); 
   delay(500); 
 
 
@@ -389,7 +410,7 @@ void loop(){
 
 if(toggleBit == 1)    // If toggledBit is high (via Ext Interrupt routine)...We've entered standby mode then...
   {
-    Serial.println("entering toggle = 1 standby mode");   
+    printTelemetry("Entering Toggle=1 waiting state");   
     lcd.clear();
     lcd.setCursor(0,0);
     lcd.print("State #2");
@@ -402,21 +423,23 @@ if(toggleBit == 1)    // If toggledBit is high (via Ext Interrupt routine)...We'
     strip.setPixelColor(3, strip.Color(0, 0, 0)); 
     strip.show();
 
+    TiltedMode = 1; //Re-init Tilt Mode 
     
     while(toggleBit == 1)
       {
-        Serial.println("i'm WAITING for arming"); 
+      printTelemetry("I'm waiting..."); 
       UserSelection = getEncoder(); 
+      delay(20); 
       
       }
   }
 
 if(toggleBit == 0)
   {
-    Serial.println("entering toggle = 0 ARMED mode");
     lcd.clear();
     lcd.setCursor(0,1);
     lcd.print("ARMED    Mode(1)"); 
+
 
     
   while(toggleBit == 0)
@@ -434,6 +457,7 @@ if(toggleBit == 0)
     
     readTouch_QT110();
     Tilt = get_TiltOmeter();     //Do tilt sensing switch
+    printTelemetry("Armed"); 
     
     delay(10);        
       if (bTouched == true)
@@ -452,7 +476,8 @@ if(toggleBit == 0)
         while(bTouched ==true)
            {
            readTouch_QT110();
-           Serial.println("TOUCHED IN LOOP");
+           printTelemetry("Touched!"); 
+           delay(20); 
            }
          }
 
@@ -481,8 +506,8 @@ if(toggleBit == 0)
         while(Tilt > tiltThreshold)
            {
            Tilt = get_TiltOmeter();
-           Serial.println("Tilted");
-           delay(250); 
+            printTelemetry("Tilted"); 
+           delay(20); 
            }
         
       }
@@ -498,7 +523,6 @@ if(toggleBit == 0)
 int  getEncoder(void)
 {
   
-  
   //   value += (encoder->getValue()*scaler);
   raw = myEnc.read();
  // value = raw; 
@@ -507,14 +531,13 @@ int  getEncoder(void)
   if (value != last) 
   {
     last = value;
-    Serial.print(raw); 
-    Serial.print("  to --> "); 
-    Serial.print("Encoder Value: ");
-    Serial.print(value);
-    Serial.print("  to -->  ");
+//    Serial.print(raw); 
+//    Serial.print("  to --> "); 
+//    Serial.print("Encoder Value: ");
+//    Serial.print(value);
+//    Serial.print("  to -->  ");
    //  valueOut = map(value,0,26,1,5);
    valueOut = value; 
-     Serial.print(valueOut); 
       //     lcd.clear();
      //      showSomething(valueOut);   //For Haptics project this ran the dispalay...moved out for EES Mrk3 dev.
            
@@ -529,8 +552,7 @@ if(valueOut < 1)
   valueOut = 1;
   myEnc.write(1);
 }
-    Serial.print(" limited -->  ");
-    Serial.println(valueOut); 
+
 
   for(uint16_t i=0; i<strip.numPixels(); i++) {
   //    strip.setPixelColor(i, strip.Color(0, 0, 0));
@@ -681,10 +703,6 @@ void readTouch_QT110(void)
   }
   else bTouched = false; 
 
-
-  Serial.print(bTouched);  Serial.print(" -->"); Serial.println(QT_in);
-
-  
   }
 
 // -----------------------Timer Interrupt...for experimentation---------------------------------
@@ -701,7 +719,6 @@ VARIABLES
 void isrService()
 {
 cli();
-Serial.println("At ISR0  ");
 
  unsigned long interrupt_time = millis();
  // If interrupts come faster than 200ms, assume it's a bounce and ignore
@@ -709,8 +726,9 @@ Serial.println("At ISR0  ");
  {
   // ... do your thing
 toggleBit = !toggleBit;
-Serial.print("And Toggle= ");
-Serial.println(toggleBit); 
+
+printTelemetry("ISR: Toggle"); 
+
 sei();
  buttonCounter = 1;
  
@@ -755,8 +773,8 @@ Serial.println("At ISR_#2");
  {
   // ... do your thing
 toggleBit = !toggleBit;
-Serial.print("And Toggle= ");
-Serial.println(toggleBit); 
+
+printTelemetry("ISR2: Toggle"); 
  }
  
   wTrig.stopAllTracks();
@@ -783,11 +801,11 @@ launches GUI selected effects for touch
 VARIABLES   
 --------------------------------------------------------------------------------------------------------------------
 */
-void doSomethingAboutIt_JustTouched(void)
+void doSomethingAboutIt_JustTouchedOLD(void)
 {
 
   //playFullHaptic(HapLib_i[UserSelection],HapEffectON_i[UserSelection]);
-  // Serial.print("Touched here..."); Serial.println();
+  //printTelemetry("Just Touched"); 
 
  
 }
@@ -810,9 +828,6 @@ void doingSomethingWhileTouched(void)
   drv2605.PWM_Setup(); 
   analogWrite(Shaft_BLUE, map(j,0,255,255,0));   //inverse the input becuase the PWM is active low
   analogWrite(PWM_OUT, 0x80); 
-
-
-    
   delay(10); 
 
                                                                                     
@@ -832,7 +847,7 @@ void doSomethingAboutIt_Released(void)
     wTrig.trackPlayPoly(SoundEffectOFF_i[UserSelection]);   
     playFullHaptic(HapLib_i[UserSelection],HapEffectOFF_i[UserSelection]);
     
-    Serial.print(", and release"); Serial.println();
+    printTelemetry("Touch Released"); 
 
     i = 0;      // PWM waveform table index - reset for next round.
     watchdog = 0; 
@@ -933,8 +948,26 @@ int get_TiltOmeter(void)
   mag_x=imu.calcMag(imu.mx);
   mag_x = mag_x - tiltOffset; 
   mag_x = map(mag_x,450,540,0,180);
-  Serial.println(mag_x);
-  return mag_x; 
+  myRunAvg.addValue(mag_x);
+  return myRunAvg.getAverage(); 
 }
 
+
+//SERIAL OUTPUT FUNCTION
+//For plotting in CSV type format using a Telemetry viewer software JarRscrLoader
+// Our Structure is going to be just an array of numbers that represent differnet global variables digging in from 
+void  printTelemetry(const char* message)
+{
+  String telem = ""; // Create a fresh line to log
+  
+  telem += String(toggleBit) + ",";            // Plot 1: Toggle state (push button)
+  telem += String(bTouched) + ",";             // Plot 2: Touch State
+  telem += String(Tilt) + ",";                 // Plot 3: Tilt value
+  telem += String(TiltedMode);           // Plot 4: Tilt mode-shift
+  
+ // telem += message;                             // Last chunk == debug strings 
+  
+  telem += "\r\n"; // Add a new line and we are DONE
+  Serial.print(telem);      
+}
 
