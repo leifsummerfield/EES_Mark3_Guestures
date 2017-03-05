@@ -39,26 +39,24 @@ Feb 19    Token
 
 Feb 21  -  Config serial outputting into telemetry formatting 
         -  Add running average filter to magnetometer to remove blips...
+
+Mar 4   -  Cleanup!
+          - Add dependent file GuesturesStateMachine.h to offload some functions for readability 
+          - Added 2nd touchsensor reader and renamed functions appropriatly. Both get read now and set differet toggle bits. 
                
  */
 
-//HERE ARE A FEW KEY VARIABLES FOR ADJUSTMENT
- 
-#include "HapticsGUI_defs.h"
-
+//HERE ARE JUST "A FEW" KEY VARIABLES FOR ADJUSTMENT
+ #include "HapticsGUI_defs.h"
 
 // include the library code:
 #include <LiquidCrystal.h>
 
 // initialize the library with the numbers of the interface pins
 LiquidCrystal lcd(12, 11, 4, 5, 6, 7);
-//quidCrystal lcd(8, 7, 3, 4, 5, 6);
-
 
 #include <Adafruit_NeoPixel.h>
-
 #define PIN 13
-
 // Parameter 1 = number of pixels in strip
 // Parameter 2 = pin number (most are valid)
 // Parameter 3 = pixel type flags, add together as needed:
@@ -77,13 +75,13 @@ wavTrigger wTrig;             // Our WAV Trigger object
 
 
 //      -      Capacitive touch sensor definitions here
-#include <CapacitiveSensor.h>
-CapacitiveSensor   C1 = CapacitiveSensor(20,16);        // 10M resistor between pins 21 & 22, pin 22 is sensor pin, add a wire and or foil if desired
-CapacitiveSensor   C2 = CapacitiveSensor(20,17);        // 10M resistor between pins 21 & 23, pin 23 is sensor pin, add a wire and or foil
-volatile long total2, total1; 
-int QTin = 16; 
+//      -   Note after cleanup that these are not longer using the capacitive sense library...
+//           They are just digital Inputs, two of them
+int TouchIn1 = 16;      //Touch1 connected to pin3 of RJ45 
+int TouchIn2 = 17;      //Touch2 only one modified board, connected to 2nd handtool breakout board 
 
-boolean bTouched = false; 
+boolean bTouched1 = false; 
+boolean bTouched2 = false; 
 
 //      -      To read the sensor in the background...let's employ TIMEROne
 #include <TimerOne.h>
@@ -194,24 +192,29 @@ int TiltedMode = 1;       // Tilt activated variable indexed on each tilt up
 
 RunningAverage myRunAvg(5);
 int samples = 0;
-
+//                                                                                    New in cleanup...move main loop functions into here
+ #include "GuesturesStateMachine.h"
 
 //     SETUP SECTION  ---------------------------------------------------------------SETUP SECTION ------------------------------------
 void setup() {
     // initialize the pushbutton pin as an input:
-  pinMode(QTin, INPUT); 
+  pinMode(TouchIn1, INPUT); 
+  pinMode(TouchIn2, INPUT); 
   pinMode(encoderButton, INPUT);     
   pinMode(PWM_OUT, OUTPUT);
+
  // pinMode(Shaft_RED, OUTPUT);
   pinMode(Shaft_GREEN, OUTPUT);
   pinMode(Shaft_BLUE, OUTPUT);
-      
-  //digitalWrite(Shaft_RED, HIGH);
+ //digitalWrite(Shaft_RED, HIGH);
   digitalWrite(Shaft_GREEN, HIGH);
   digitalWrite(Shaft_BLUE, HIGH);
   
   attachInterrupt(encoderButton, isrService, RISING); // interrrupt 1 is data ready
   attachInterrupt(10, isrService2, RISING);      //Test of 2nd ISR
+
+// Turn on the trusty debug serial output port
+   Serial.begin(115200);
 
   // Initialize the MPU-9250. Should return true on success:
   if ( !initIMU() ) 
@@ -224,8 +227,6 @@ void setup() {
 
   // Init the running average filter with some initial values
     myRunAvg.fillValue(100,5);
-
-
   
   // set up the LCD's number of columns and rows: 
   lcd.begin(16, 2);
@@ -238,7 +239,7 @@ void setup() {
   colorWipe(strip.Color(0, 0, 25), 150); // Blue
 
   // WAV Trigger startup at 57600
-  delay(1000);  //sound board warmup
+  delay(500);  //sound board warmup
     //  to finish reset before trying to send commands.
     wTrig.start();
   // If we're not powering the WAV Trigger, send a stop-all command in case it
@@ -249,7 +250,7 @@ void setup() {
  //Easter Egg for Bill...track 98 is the Millenium Falcon taking off
  //wTrig.trackPlayPoly(98);               // Play first note
 
-   Serial.begin(9600);
+
  
   Serial.println("Here before haptics init");
   //calibrate();
@@ -280,16 +281,16 @@ void setup() {
 
   while (touchCounter < 3)
     {
-    readTouch_QT110(); 
+    readTouches(); 
     printTelemetry("Setup#1: Touch test"); 
-        if(bTouched == 1)
+        if(bTouched1 == 1)
         {
         touchCounter =touchCounter +1;
       int Red=250-50*touchCounter; 
       strip.setPixelColor((touchCounter-1), strip.Color(Red, 50, 0));
       strip.show();
-        while(bTouched ==1)
-        readTouch_QT110(); 
+        while(bTouched1 ==1)
+        readTouches(); 
         printTelemetry("Setup#1: TOUCHED"); 
         }
     lcd.setCursor(14,1);
@@ -309,10 +310,10 @@ void setup() {
   // Print a message to the LCD.
   lcd.print("State #1: Test");
   lcd.setCursor(0,1);
-  lcd.print("Foot Tap 3x:  0"); 
+  lcd.print("Foot Tap Once:"); 
   toggleBit = 0;
   
-  while (tapFootCounter < 3)
+  while (tapFootCounter < 1)
     {
      printTelemetry("Setup#2: Tap Test"); 
         if(toggleBit == 1)
@@ -402,120 +403,68 @@ void setup() {
 }
 
 
-//        THE MAIN LOOP            ------      THE MAIN LOOP             STARTS HERE ------     ---------------     ------------------      ------------------      ------------
-
+//----------------------THE MAIN LOOP-----------------------THE MAIN LOOP--------------------STARTS HERE -----------------------------
+//----------------------THE MAIN LOOP-----------------------THE MAIN LOOP--------------------STARTS HERE -----------------------------
 
 
 void loop(){
 
 if(toggleBit == 1)    // If toggledBit is high (via Ext Interrupt routine)...We've entered standby mode then...
   {
-    printTelemetry("Entering Toggle=1 waiting state");   
-    lcd.clear();
-    lcd.setCursor(0,0);
-    lcd.print("State #2");
-    lcd.setCursor(0,1);
-    lcd.print("STANDBY");
 
-    strip.setPixelColor(0, strip.Color(0, 0, 50));
-    strip.setPixelColor(1, strip.Color(0, 50, 0));
-    strip.setPixelColor(2, strip.Color(0, 0, 0));
-    strip.setPixelColor(3, strip.Color(0, 0, 0)); 
-    strip.show();
-
-    TiltedMode = 1; //Re-init Tilt Mode 
+    enterStandBy_Mode(); 
     
+    //While we wait for the footswitch bit to flip...
     while(toggleBit == 1)
       {
       printTelemetry("I'm waiting..."); 
       UserSelection = getEncoder(); 
-      delay(20); 
-      
+
       }
   }
 
+//  TEST for footswitch activation via the toggle bit-flip, if so then enter the ARMED mode branch
 if(toggleBit == 0)
   {
-    lcd.clear();
-    lcd.setCursor(0,1);
-    lcd.print("ARMED    Mode(1)"); 
+  enterArmed_Mode(); 
 
-
-    
   while(toggleBit == 0)
     {
-    lcd.setCursor(0,0);
-    lcd.print("State #3");
-    lcd.setCursor(0,1);
-    lcd.print("ARMED"); 
-    
-    strip.setPixelColor(0, strip.Color(0, 0, 50));
-    strip.setPixelColor(1, strip.Color(0, 50, 0));
-    strip.setPixelColor(2, strip.Color(50, 25, 0));
-    strip.setPixelColor(3, strip.Color(0, 0, 0));
-    strip.show();
-    
-    readTouch_QT110();
-    Tilt = get_TiltOmeter();     //Do tilt sensing switch
-    printTelemetry("Armed"); 
-    
-    delay(10);        
-      if (bTouched == true)
+      armedAndWaiting(); 
+
+
+      //ARMED and touched, actions go in here
+      if (bTouched1 == true)
         { 
-        lcd.setCursor(0,0);
-        lcd.print("State #3");
-        lcd.setCursor(0,1);
-        lcd.print("ACTIVE"); 
-            
-        strip.setPixelColor(3, strip.Color(50, 0, 0));
-        strip.show();
-        //play some sound the first time through
-        wTrig.stopAllTracks();
-        wTrig.trackPlayPoly(TiltedMode); 
-        
-        while(bTouched ==true)
+          justTouched_on1(); 
+
+        while(bTouched1 ==true)   //Note this needs an escape clause if the footswith is activated again
            {
-           readTouch_QT110();
+           readTouches();
            printTelemetry("Touched!"); 
-           delay(20); 
            }
          }
 
 
-      if (Tilt > tiltThreshold)
+      if (Tilt > tiltThreshold)   //Note Tilt is updated in armedAndWaiting(), but I want to move this to a timer
       {
-        TiltedMode = TiltedMode + 1; 
-        if(TiltedMode > 5)
-          TiltedMode = 1; 
         
-        lcd.setCursor(0,0);
-        lcd.print("State #3");
-        lcd.setCursor(9,1);
-        lcd.print("Mode(");
-        lcd.setCursor(14,1);
-        lcd.print(TiltedMode);
-        lcd.setCursor(15,1);
-        lcd.print(")"); 
-            
-        strip.setPixelColor(3, strip.Color(30, 0, 50));
-        strip.show();
-        //play some sound the first time through
-        wTrig.stopAllTracks();
-        wTrig.trackPlayPoly(TiltedMode); 
-        delay(500); 
+        justTilted();     //This handles the display and MODE indexing after tilt threshold has been reached
+
         while(Tilt > tiltThreshold)
            {
+
            Tilt = get_TiltOmeter();
             printTelemetry("Tilted"); 
-           delay(20); 
-           }
+
+           }//WHILE tilted
         
-      }
+      }//IF tilted
          
-    }
-  }
+    }//WHILE in armed mode and waiting
+  }//IF toggle == enter ARMED mode
   
-}
+}//MAIN loop end
 
 //        THE MAIN LOOP            ------      THE MAIN LOOP             ENDS HERE------      ENDMAIN   ENDMAN    ENDMAIN
 
@@ -681,31 +630,6 @@ This will be our screen display for different settings
 VARIABLES 
 --------------------------------------------------------------------------------------------------------------------
 */
-
-
-/*  ----------------------------------------------------------------------------------------------------------------
-readTouches_QT110
-This reads the input on pin17 which is now tied to the stand-alone touchsensor with a single digital output
-
-VARIABLES 
-QT_in
---------------------------------------------------------------------------------------------------------------------
-*/
-void readTouch_QT110(void)
-{
-  int QT_in = digitalRead(QTin);                                                                                                   // NEW QT section here
-
-  if (QT_in ==1)
-  {
-    bTouched = true; 
-  //  Serial.println("Touched = True"); 
-    
-  }
-  else bTouched = false; 
-
-  }
-
-// -----------------------Timer Interrupt...for experimentation---------------------------------
 
 
 
@@ -942,32 +866,5 @@ bool initIMU(void)
 
 
 
-int get_TiltOmeter(void)
-{
-  imu.update(); 
-  mag_x=imu.calcMag(imu.mx);
-  mag_x = mag_x - tiltOffset; 
-  mag_x = map(mag_x,450,540,0,180);
-  myRunAvg.addValue(mag_x);
-  return myRunAvg.getAverage(); 
-}
 
-
-//SERIAL OUTPUT FUNCTION
-//For plotting in CSV type format using a Telemetry viewer software JarRscrLoader
-// Our Structure is going to be just an array of numbers that represent differnet global variables digging in from 
-void  printTelemetry(const char* message)
-{
-  String telem = ""; // Create a fresh line to log
-  
-  telem += String(toggleBit) + ",";            // Plot 1: Toggle state (push button)
-  telem += String(bTouched) + ",";             // Plot 2: Touch State
-  telem += String(Tilt) + ",";                 // Plot 3: Tilt value
-  telem += String(TiltedMode);           // Plot 4: Tilt mode-shift
-  
- // telem += message;                             // Last chunk == debug strings 
-  
-  telem += "\r\n"; // Add a new line and we are DONE
-  Serial.print(telem);      
-}
 
