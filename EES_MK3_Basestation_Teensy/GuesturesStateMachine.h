@@ -26,7 +26,7 @@ void  printTelemetry(const char* message)
   telem += String(Tilt) + ",";                 // Plot 3: Tilt value
   telem += String(TiltedMode);           // Plot 4: Tilt mode-shift
   
-  telem += ","; telem += message;                             // Last chunk == debug strings NOTE: Remove to use telemetry viewer
+  //telem += ","; telem += message;                             // Last chunk == debug strings NOTE: Remove to use telemetry viewer
   
   telem += "\r\n"; // Add a new line and we are DONE
   Serial.print(telem);      
@@ -50,7 +50,11 @@ void	enterStandBy_Mode(void)
     strip.setPixelColor(1, strip.Color(0, 50, 0));
     strip.setPixelColor(2, strip.Color(0, 0, 0));
     strip.setPixelColor(3, strip.Color(0, 0, 0)); 
+    strip.setPixelColor(4, strip.Color(0, 0, 0));
     strip.show();
+
+    //fiber LED state set
+    digitalWrite(fiberLED,LOW); 
 
     TiltedMode = 1; //Re-init Tilt Mode 
 }
@@ -62,6 +66,9 @@ void	enterArmed_Mode(void)
     lcd.clear();
     lcd.setCursor(0,1);
     lcd.print("ARMED    Mode(1)"); 
+
+        //fiber LED state set
+    digitalWrite(fiberLED,LOW); 
 }
 
 
@@ -79,7 +86,11 @@ void	armedAndWaiting(void)
     strip.setPixelColor(1, strip.Color(0, 50, 0));
     strip.setPixelColor(2, strip.Color(50, 25, 0));
     strip.setPixelColor(3, strip.Color(0, 0, 0));
+    strip.setPixelColor(4, strip.Color(0, 0, 0));
     strip.show();
+
+    //fiber LED state set
+    digitalWrite(fiberLED,LOW); 
     
     printTelemetry("Armed"); 
     delay(50);    //so we don't get too busy. otherwise we crash here ! 
@@ -97,6 +108,9 @@ void	justTouched_on1(void)
 	//LED strip support            
 	strip.setPixelColor(3, strip.Color(50, 0, 0));
 	strip.show();
+
+    //fiber LED state set
+    digitalWrite(fiberLED,HIGH); 
 
 	//play some sound the first time through
 	wTrig.stopAllTracks();
@@ -123,7 +137,7 @@ int SoundEffectON_i[] = {0,1,2,3,8,9};
         lcd.setCursor(15,1);
         lcd.print(")"); 
             
-        strip.setPixelColor(3, strip.Color(30, 0, 50));
+        strip.setPixelColor(4, strip.Color(30, 0, 50));
         strip.show();
         //play some sound the first time through
         wTrig.stopAllTracks();
