@@ -46,6 +46,9 @@ Mar 4   -  Cleanup!
    
 Mar 5   - At long last move the sensor reading into TIMER1 function.  We'll start by putting the ini of this at the end of the 
 
+Mar 5pm  - And now...pull it all together and add back in Haptics support, high power LED support and TiltMode...
+            that maps to the effects library from the last project. 
+            NOTE that this version maps just touch #1 (green handtool board) to the action sequence
  */
 
 //HERE ARE JUST "A FEW" KEY VARIABLES FOR ADJUSTMENT
@@ -203,9 +206,11 @@ int TiltedMode = 1;       // Tilt activated variable indexed on each tilt up
 
 // And add a running average filter for the magnetometer
 #include "RunningAverage.h"
-
 RunningAverage myRunAvg(5);
 int samples = 0;
+
+int fiberLED = 20; 
+
 //                                                                                    New in cleanup...move main loop functions into here
  #include "GuesturesStateMachine.h"
 
@@ -217,6 +222,7 @@ void setup() {
   pinMode(encoderButton, INPUT);     
   pinMode(PWM_OUT, OUTPUT);
   pinMode(RFDuino_Toggel_In, INPUT);
+  pinMode(fiberLED, OUTPUT); 
 
  // pinMode(Shaft_RED, OUTPUT);
   pinMode(Shaft_GREEN, OUTPUT);
@@ -224,7 +230,8 @@ void setup() {
  //digitalWrite(Shaft_RED, HIGH);
   digitalWrite(Shaft_GREEN, HIGH);
   digitalWrite(Shaft_BLUE, HIGH);
-  
+  digitalWrite(fiberLED,LOW); 
+
   attachInterrupt(encoderButton,      isrService1, RISING);           // interrrupt 1 for Encoder button toggle input
   attachInterrupt(RFDuino_Toggel_In,  isrService2, RISING);      // ISR2 is for RFDuino intput of the foot-switch toggle
 
@@ -269,32 +276,32 @@ void setup() {
  
   Serial.println("Here before haptics init");
   //calibrate();
-  //calibrateQuite();
+  calibrateQuite();
   Serial.println("Here AFTER haptics init");
-  //playFullHaptic(library, 121);
+  playFullHaptic(library, 121);
+  Serial.println("Here after haptics fired UP");
+     
 
-     Serial.println("Here after haptics fired UP");
-      lcd.clear();
+  myEnc.write(1); // get the encoder value set to a known value befor checking it in loop   
+  toggleBit = 1;      //launch into the main loop by selecting first 
 
-      myEnc.write(1); // get the encoder value set to a known value befor checking it in loop   
-      toggleBit = 1;      //launch into the main loop by selecting first 
-
-
-  printTelemetry("Hello World"); 
 
       
 
 // FIRST SETUP CHECK --> Is the touchsensor active on the tool head?
-//Let's set the GUI and read N touches before continuing
-  int touchCounter = 0;
+
     // set up the LCD's number of columns and rows: 
+  lcd.clear();
   lcd.setCursor(0, 0);
   // Print a message to the LCD.
   lcd.print("State #1: Test");
   lcd.setCursor(0,1);
   lcd.print("Touch Tip 3x:"); 
 
-  while (touchCounter < 1)
+//Let's set the GUI and read N touches before continuing
+  int touchCounter = 0;
+
+  while (touchCounter < 3)
     {
     Tmr1_ReadSensors(); 
     printTelemetry("Setup#1: Touch test"); 
@@ -456,11 +463,13 @@ if(toggleBit == 0)
       if (bTouched1 == true)
         { 
           justTouched_on1(); 
+          doSomethingAboutIt_JustTouched(); 
 
         while(bTouched1 ==true)   //Note this needs an escape clause if the footswith is activated again
            {
            printTelemetry("Touched!"); 
            }
+           doSomethingAboutIt_Released(); 
          }
 
 
@@ -696,7 +705,7 @@ interrupt2_time = millis();
      
       wTrig.stopAllTracks();
       wTrig.trackPlayPoly(1);   
-      //for refernce this is the dound effect on selection used in teh last design int SoundEffectON_i[] = {0,1,2,3,8,9};
+      //for refernce this is the dound effect on selection used in the last design int SoundEffectON_i[] = {0,1,2,3,8,9};
 
  }
 
@@ -717,11 +726,17 @@ launches GUI selected effects for touch
 VARIABLES   
 --------------------------------------------------------------------------------------------------------------------
 */
-void doSomethingAboutIt_JustTouchedOLD(void)
+void doSomethingAboutIt_JustTouched(void)
 {
+  
+    wTrig.stopAllTracks();
+    wTrig.trackPlayPoly(SoundEffectON_i[UserSelection]);   
 
-  //playFullHaptic(HapLib_i[UserSelection],HapEffectON_i[UserSelection]);
-  //printTelemetry("Just Touched"); 
+  Timer1.detachInterrupt(); // 
+
+  playFullHaptic(HapLib_i[TiltedMode],HapEffectON_i[TiltedMode]);
+
+  Timer1.attachInterrupt(Tmr1_ReadSensors); // blinkLED to run every 0.15 seconds
 
  
 }
@@ -761,16 +776,16 @@ void doSomethingAboutIt_Released(void)
 {
     wTrig.stopAllTracks();
     wTrig.trackPlayPoly(SoundEffectOFF_i[UserSelection]);   
-    playFullHaptic(HapLib_i[UserSelection],HapEffectOFF_i[UserSelection]);
-    
-    printTelemetry("Touch Released"); 
 
+    Timer1.detachInterrupt(); // 
+    playFullHaptic(HapLib_i[TiltedMode],HapEffectOFF_i[TiltedMode]);
+    Timer1.attachInterrupt(Tmr1_ReadSensors); // blinkLED to run every 0.15 seconds
+      
     i = 0;      // PWM waveform table index - reset for next round.
     watchdog = 0; 
     
-    analogWrite(Shaft_BLUE,0xFF); 
 
-    delay(100); 
+    delay(50); 
 }
 
 
