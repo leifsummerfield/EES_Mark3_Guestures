@@ -43,7 +43,9 @@ Feb 21  -  Config serial outputting into telemetry formatting
 Mar 4   -  Cleanup!
           - Add dependent file GuesturesStateMachine.h to offload some functions for readability 
           - Added 2nd touchsensor reader and renamed functions appropriatly. Both get read now and set differet toggle bits. 
-               
+   
+Mar 5   - At long last move the sensor reading into TIMER1 function.  We'll start by putting the ini of this at the end of the 
+
  */
 
 //HERE ARE JUST "A FEW" KEY VARIABLES FOR ADJUSTMENT
@@ -84,7 +86,7 @@ boolean bTouched1 = false;
 boolean bTouched2 = false; 
 
 //      -      To read the sensor in the background...let's employ TIMEROne
-#include <TimerOne.h>
+#include <TimerOne.h>     // We'll put all the sensor reading into this ISR, init at the end of the 
 
 
 //      -       Add Encoder inputs please!
@@ -96,10 +98,22 @@ int16_t last, raw, value, valueOut, b, last2, wiggle;
 boolean  lastB = 0; 
 boolean  toggleBit = 0; 
 int  UserSelection = 1;     //to get started
- static unsigned long last_interrupt_time = 0;
+
+
  int buttonCounter= 0;
  int buttonHoldThreshold = 200; 
  
+// RFDuino input for the footswitch remote is on Pin10 == TX2
+int  RFDuino_Toggel_In = 10; 
+
+// External Interrupt variables
+unsigned long interrupt1_time ; // Debounce timer variable for interrupt 1
+unsigned long interrupt2_time ; //      " "    "  "            interrupt 2
+
+static unsigned long last_interrupt1_time = 0;
+static unsigned long last_interrupt2_time = 0;
+
+
 //   avoid using pins with LEDs attached (not pin 13)                                                         aaaaaaaaaaaaaaa
 //Encoder color selector knob
 int  Shaft_RED = 21; 
@@ -202,6 +216,7 @@ void setup() {
   pinMode(TouchIn2, INPUT); 
   pinMode(encoderButton, INPUT);     
   pinMode(PWM_OUT, OUTPUT);
+  pinMode(RFDuino_Toggel_In, INPUT);
 
  // pinMode(Shaft_RED, OUTPUT);
   pinMode(Shaft_GREEN, OUTPUT);
@@ -210,8 +225,8 @@ void setup() {
   digitalWrite(Shaft_GREEN, HIGH);
   digitalWrite(Shaft_BLUE, HIGH);
   
-  attachInterrupt(encoderButton, isrService, RISING); // interrrupt 1 is data ready
-  attachInterrupt(10, isrService2, RISING);      //Test of 2nd ISR
+  attachInterrupt(encoderButton,      isrService1, RISING);           // interrrupt 1 for Encoder button toggle input
+  attachInterrupt(RFDuino_Toggel_In,  isrService2, RISING);      // ISR2 is for RFDuino intput of the foot-switch toggle
 
 // Turn on the trusty debug serial output port
    Serial.begin(115200);
@@ -279,9 +294,9 @@ void setup() {
   lcd.setCursor(0,1);
   lcd.print("Touch Tip 3x:"); 
 
-  while (touchCounter < 3)
+  while (touchCounter < 1)
     {
-    readTouches(); 
+    Tmr1_ReadSensors(); 
     printTelemetry("Setup#1: Touch test"); 
         if(bTouched1 == 1)
         {
@@ -290,7 +305,7 @@ void setup() {
       strip.setPixelColor((touchCounter-1), strip.Color(Red, 50, 0));
       strip.show();
         while(bTouched1 ==1)
-        readTouches(); 
+        Tmr1_ReadSensors(); 
         printTelemetry("Setup#1: TOUCHED"); 
         }
     lcd.setCursor(14,1);
@@ -400,6 +415,11 @@ void setup() {
   delay(500); 
 
 
+//LAST and new in March 5 built, put TIMER 1 inits here
+  Timer1.initialize(20000); //20ms 
+  Timer1.attachInterrupt(Tmr1_ReadSensors); // blinkLED to run every 0.15 seconds
+
+
 }
 
 
@@ -432,7 +452,6 @@ if(toggleBit == 0)
     {
       armedAndWaiting(); 
 
-
       //ARMED and touched, actions go in here
       if (bTouched1 == true)
         { 
@@ -440,7 +459,6 @@ if(toggleBit == 0)
 
         while(bTouched1 ==true)   //Note this needs an escape clause if the footswith is activated again
            {
-           readTouches();
            printTelemetry("Touched!"); 
            }
          }
@@ -453,10 +471,7 @@ if(toggleBit == 0)
 
         while(Tilt > tiltThreshold)
            {
-
-           Tilt = get_TiltOmeter();
             printTelemetry("Tilted"); 
-
            }//WHILE tilted
         
       }//IF tilted
@@ -622,9 +637,6 @@ void showSomething(int whatYouWant)
 }
 
 /*  ----------------------------------------------------------------------------------------------------------------
-readTouches
-This will be our screen display for different settings
-
 
 
 VARIABLES 
@@ -636,46 +648,27 @@ VARIABLES
 /*  ----------------------------------------------------------------------------------------------------------------
 EXTERNAL interrupt ISR
 reads the encoder button knob and toggles an output from 1 to 0 if it's been pressed
+//this is working well in teh cleaned up version :)
 /
 VARIABLES   
 --------------------------------------------------------------------------------------------------------------------
 */
-void isrService()
+void isrService1()
 {
 cli();
+//Serial.println("ISR #1");
 
- unsigned long interrupt_time = millis();
- // If interrupts come faster than 200ms, assume it's a bounce and ignore
- if (interrupt_time - last_interrupt_time > 200) 
- {
-  // ... do your thing
-toggleBit = !toggleBit;
+   interrupt1_time = millis();
+  // If interrupts come faster than 200ms, assume it's a bounce and ignore
+  if (interrupt1_time - last_interrupt1_time > 200) 
+  {
+    toggleBit = !toggleBit;
+    Serial.print("Toggle = ");  Serial.println(toggleBit); 
 
-printTelemetry("ISR: Toggle"); 
+  }
+  last_interrupt1_time = interrupt1_time;
 
-sei();
- buttonCounter = 1;
- 
-if(toggleBit == 1)
-{
-
- //  wTrig.stopAllTracks();
- // wTrig.trackPlayPoly(1); 
-
-}
-
-if(toggleBit == 0)
-{
-   
- // wTrig.stopAllTracks();
- // wTrig.trackPlayPoly(1); 
-}
-
-
- }
- last_interrupt_time = interrupt_time;
-
-
+ sei();    //Re-enable ISR after we're do 
 }
 
 /*  ----------------------------------------------------------------------------------------------------------------
@@ -691,29 +684,28 @@ void isrService2()
 cli();
 Serial.println("At ISR_#2");
 
- unsigned long interrupt_time = millis();
+
+interrupt2_time = millis();
+
  // If interrupts come faster than 200ms, assume it's a bounce and ignore
- if (interrupt_time - last_interrupt_time > 200) 
+ if (interrupt2_time - last_interrupt2_time > 200) 
  {
-  // ... do your thing
-toggleBit = !toggleBit;
-
-printTelemetry("ISR2: Toggle"); 
- }
- 
-  wTrig.stopAllTracks();
-  wTrig.trackPlayPoly(1);   
-
-  
-//for refernce this is the dound effect on selection used in teh last design int SoundEffectON_i[] = {0,1,2,3,8,9};
-  
-sei();
-
- last_interrupt_time = interrupt_time;
+    // ... do your thing
+    toggleBit = !toggleBit;
+    Serial.print("Toggle = ");  Serial.println(toggleBit); 
+     
+      wTrig.stopAllTracks();
+      wTrig.trackPlayPoly(1);   
+      //for refernce this is the dound effect on selection used in teh last design int SoundEffectON_i[] = {0,1,2,3,8,9};
 
  }
+
+ last_interrupt2_time = interrupt2_time;
+ sei();
  
-//SECond ISR for remote switch activation through RFDuino
+ }
+ 
+//End of the Second ISR for remote switch activation through RFDuino
 
 
 
@@ -865,6 +857,45 @@ bool initIMU(void)
 }
 
 
+void  Tmr1_ReadSensors(void)
+{
+  int T1_in = digitalRead(TouchIn1);                                                                                                   // NEW QT section here
 
+  if (T1_in ==1)
+  {
+    bTouched1 = true; 
+  }
+    else bTouched1 = false; 
+  
+
+
+ int T2_in = digitalRead(TouchIn2);      
+  if (T2_in ==1)
+  {
+    bTouched2 = true; 
+  }
+    else bTouched2 = false; 
+
+
+
+  imu.update(); 
+  mag_x=imu.calcMag(imu.mx);
+  mag_x = mag_x - tiltOffset; 
+  mag_x = map(mag_x,450,540,0,180);
+  myRunAvg.addValue(mag_x);
+  Tilt = myRunAvg.getAverage(); 
+
+  String telem = ""; // Create a fresh line to log
+  //Plot this out
+  telem += String(toggleBit) + ",";            // Plot 1: Toggle state (push button)
+  telem += String(bTouched1) + ",";             // Plot 2: Touch State
+  telem += String(bTouched2) + ","; 
+  telem += String(Tilt) + ",";            // Plot 3: Tilt value
+  telem += String(TiltedMode);                  // Plot 4: Tilt mode-shift
+  
+  
+  telem += "\r\n"; // Add a new line and we are DONE
+ // Serial.print(telem);   
+}
 
 

@@ -26,51 +26,12 @@ void  printTelemetry(const char* message)
   telem += String(Tilt) + ",";                 // Plot 3: Tilt value
   telem += String(TiltedMode);           // Plot 4: Tilt mode-shift
   
-  //telem += ","; telem += message;                             // Last chunk == debug strings NOTE: Remove to use telemetry viewer
+  telem += ","; telem += message;                             // Last chunk == debug strings NOTE: Remove to use telemetry viewer
   
   telem += "\r\n"; // Add a new line and we are DONE
   Serial.print(telem);      
 //This is a blocking function...so let's not spin to fast for COMport reading purposes, put a delay in here (20hz is plenty fast)
   delay(50); 
-}
-
-/*  ----------------------------------------------------------------------------------------------------------------
-readTouches
-This reads the input on pin17 which is now tied to the stand-alone touchsensor with a single digital output
-
-VARIABLES 
-
---------------------------------------------------------------------------------------------------------------------
-*/
-void readTouches(void)
-{
-  int QT_in = digitalRead(TouchIn1);                                                                                                   // NEW QT section here
-
-  if (QT_in ==1)
-  {
-    bTouched1 = true; 
-  }
-    else bTouched1 = false; 
-  
-
-
- QT_in = digitalRead(TouchIn2);      
-  if (QT_in ==1)
-  {
-    bTouched2 = true; 
-  }
-    else bTouched2 = false; 
-}
-
-
-int get_TiltOmeter(void)
-{
-  imu.update(); 
-  mag_x=imu.calcMag(imu.mx);
-  mag_x = mag_x - tiltOffset; 
-  mag_x = map(mag_x,450,540,0,180);
-  myRunAvg.addValue(mag_x);
-  return myRunAvg.getAverage(); 
 }
 
 
@@ -120,10 +81,8 @@ void	armedAndWaiting(void)
     strip.setPixelColor(3, strip.Color(0, 0, 0));
     strip.show();
     
-    //Read Sensors and such
-    readTouches();
-    Tilt = get_TiltOmeter();     //Do tilt sensing switch
     printTelemetry("Armed"); 
+    delay(50);    //so we don't get too busy. otherwise we crash here ! 
 }
 
 //	If were just touched on sensor #1...do some stuff before waiting to be un-touched
