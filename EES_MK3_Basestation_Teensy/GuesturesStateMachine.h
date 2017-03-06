@@ -26,7 +26,7 @@ void  printTelemetry(const char* message)
   telem += String(Tilt) + ",";                 // Plot 3: Tilt value
   telem += String(TiltedMode);           // Plot 4: Tilt mode-shift
   
-  //telem += ","; telem += message;                             // Last chunk == debug strings NOTE: Remove to use telemetry viewer
+ // telem += ","; telem += message;                             // Last chunk == debug strings NOTE: Remove to use telemetry viewer
   
   telem += "\r\n"; // Add a new line and we are DONE
   Serial.print(telem);      

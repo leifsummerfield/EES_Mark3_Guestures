@@ -49,6 +49,8 @@ Mar 5   - At long last move the sensor reading into TIMER1 function.  We'll star
 Mar 5pm  - And now...pull it all together and add back in Haptics support, high power LED support and TiltMode...
             that maps to the effects library from the last project. 
             NOTE that this version maps just touch #1 (green handtool board) to the action sequence
+Mar 6am   - damn it's so late, it's early :()
+          just a quick version to remap touch2 to the actions for the Busy Tool prototype
  */
 
 //HERE ARE JUST "A FEW" KEY VARIABLES FOR ADJUSTMENT
@@ -874,22 +876,23 @@ bool initIMU(void)
 
 void  Tmr1_ReadSensors(void)
 {
-  int T1_in = digitalRead(TouchIn1);                                                                                                   // NEW QT section here
+  int T1_in = digitalRead(TouchIn2);                                                                                                   // NEW QT section here
 
   if (T1_in ==1)
   {
     bTouched1 = true; 
+  
   }
     else bTouched1 = false; 
-  
 
 
- int T2_in = digitalRead(TouchIn2);      
-  if (T2_in ==1)
-  {
-    bTouched2 = true; 
-  }
-    else bTouched2 = false; 
+
+// int T2_in = digitalRead(TouchIn2);      
+//  if (T2_in ==1)
+//  {
+//    bTouched2 = true; 
+//  }
+//    else bTouched2 = false; 
 
 
 
