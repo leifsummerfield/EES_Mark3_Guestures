@@ -92,20 +92,34 @@ void blinkLED()
 #include <RFduinoGZLL.h>
 device_t role = DEVICE0;
 
-bool HitMe = 0;
-int guestureThreshold = 75000; 
-bool toggler = 0; 
+
 
 #include <EES_Click.h>
-
 EES_Click guestureButton(HIGH);  //Active high click function definition
 
+// And add a running average filter for the magnetometer
+#include "RunningAverage.h"
+RunningAverage myRunAvg(5);
+
+bool HitMe = 0;
+bool toggler = 0; 
+int samples = 0;
+int mag_x;                // main variable for tiltangle
+int mag_y;                // main variable for tiltangle
+int mag_z;                // main variable for tiltangle
+int tiltOffset;           
+int TiltedMode;           // tilt and tap mode state
+int Tilt;                 //running average fills this up and becomes our prime working variable for tap and tilt sensing
+
+
+
+//     SETUP SECTION  ---------------------------------------------------------------SETUP SECTION ------------------------------------
 void setup()
 {
   // Initialize LED, interrupt input, and serial port.
   // LED defaults to off:
   initHardware(); 
-
+Serial.println("Setup initializing"); 
   // Initialize the MPU-9250. Should return true on success:
   if ( !initIMU() ) 
   {
@@ -123,12 +137,31 @@ void setup()
     // Setup guesture button timers (all in milliseconds / ms)
   // (These are default if not set, but changeable for convenience)
   guestureButton.debounceTime   = 1;   // Debounce timer in ms
-  guestureButton.multiclickTime = 300;  // Time limit for multi clicks
+  guestureButton.multiclickTime = 10;  // Time limit for multi clicks
   guestureButton.longClickTime  = 1000; // time until "held-down clicks" register
 
 
+  // Initialize the titl sensor to a zero offset position
+  for (int i=0; i<20; i++)
+  {
+    imu.update(); 
+    mag_y=imu.calcMag(imu.my);        // let's try grabbing tilt in Y axis for the foot switch
+
+    myRunAvg.addValue(mag_y);
+    Serial.print(mag_y); Serial.printf(", %d\n",i); 
+    delay(100); 
+  }
+    tiltOffset = myRunAvg.getAverage(); 
+    Serial.print("Tilt Offset Initialized to: "); Serial.println(tiltOffset); 
+    delay(1000); 
+
+Serial.println("Setup complete"); 
 }
 
+
+
+
+//     MAIN LOOP SECTION  ---------------------------------------------------------------MAIN LOOP SECTION ------------------------------------
 void loop()
 {
 
@@ -139,59 +172,62 @@ void loop()
   int Accel_z = abs(imu.az);
 
   int Total_Accel = Accel_x+Accel_y+Accel_z;
-  //Serial.println(Total_Accel); 
+  Total_Accel = map(Total_Accel,16000,100000,0,100) ;     //map these suckers down to something more plottable on the same chart
   
-  if (Total_Accel > guestureThreshold)
-  {
+  mag_y=imu.calcMag(imu.my);
+  mag_y = mag_y - tiltOffset; 
+  //mag_y = map(mag_y,-60,60,0,360);
+  myRunAvg.addValue(mag_y);
+  Tilt = myRunAvg.getAverage(); 
 
-    HitMe = 1; 
-    digitalWrite(DataOut, HIGH);
-  }
-      
+  String telem = ""; // Create a fresh line to log
+  //Plot this out
+  telem += String(mag_y) + ",";            // Plot 1, Tilt magnatude
+  telem += String(guestureThreshold) + ","; // plot 1b: 
+  telem += String(Total_Accel) + ",";                 // Plot 2, titl angle
+  telem +=  String(TapThreshold) + ",";
+  telem += String(TiltedMode);                  // Plot 3: Tilt mode-shift
+  telem += "\r\n"; // Add a new line and we are DONE
+  Serial.println(telem); 
+
+  
+  if (Tilt < guestureThreshold)   //Note sign switch since we're in negative number land
+  {
+    TiltedMode = 50;   
+  
+    if (Total_Accel > TapThreshold)
+      {
+      TiltedMode = 100;   
+      HitMe = 1; 
+      digitalWrite(DataOut, HIGH);
+      }
+  }   
   else 
   {
+    TiltedMode = 0;   
     HitMe = 0; 
-        digitalWrite(DataOut, LOW);
+      digitalWrite(DataOut, LOW);
   }
 
-  //  Serial.println(HitMe); 
     
     guestureButton.Update(HitMe); 
-    
-      int function = guestureButton.clicks;
+    int function = guestureButton.clicks;
    // Save click codes in LEDfunction, as click codes are reset at next Update()
   if (function != 0) 
   {
   //for now just anyrecognized hit == toggle
   toggler = ! toggler; 
     // send state to Host
-  //RFduinoGZLL.sendToHost(toggler);
+  RFduinoGZLL.sendToHost(toggler);
   Serial.print("Toggle = ");  Serial.println(toggler); 
   
-
-  if(guestureButton.clicks == 1)
-  {
-    Serial.println("SINGLE click");
-    RFduinoGZLL.sendToHost(toggler);
-  }
-
-  if(function == 2)
-  {
-    Serial.println("DOUBLE click");
-
-  }
-
-  if(function == 3) Serial.println("TRIPLE click");
-
-  if(function == -1) Serial.println("SINGLE LONG click");
-
-  if(function == -2) Serial.println("DOUBLE LONG click");
-
-  if(function == -3) Serial.println("TRIPLE LONG click");
   }
   function = 0;
   
 }
+
+//   END  MAIN LOOP SECTION  ---------------------------------------------------------------END MAIN LOOP SECTION ------------------------------------
+
 
 
 void initHardware(void)
